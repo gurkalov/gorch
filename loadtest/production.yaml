@@ -1,0 +1,17 @@
+tank:
+  enabled: true
+  package: yandextank.plugins.DataUploader
+  token_file: .token
+
+phantom:
+  address: localhost:7080
+  uris:
+    - /fast/add
+  load_profile:
+    load_type: rps
+    schedule: const(1000, 10s)
+  instances: 2
+console:
+  enabled: true
+telegraf:
+  enabled: false
