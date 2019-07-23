@@ -1,0 +1,19 @@
+version: "3.6"
+
+services:
+  redis:
+    image: ${IMAGE_REDIS}
+    ports:
+      - ${REDIS_PORT}:6379
+
+  clickhouse:
+    image: ${IMAGE_CLICKHOUSE}
+    ports:
+      - ${CLICKHOUSE_PORT}:8123
+      - 9000:9000
+    volumes:
+      - clickhouse:/var/lib/clickhouse
+      - ./database:/docker-entrypoint-initdb.d
+
+volumes:
+  clickhouse:
