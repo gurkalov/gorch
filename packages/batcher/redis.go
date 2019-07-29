@@ -17,9 +17,10 @@ func (batcher *RedisBatcher) Init(period int64) error {
 	f := func() {
 		for t := range time.NewTicker(time.Duration(period) * time.Millisecond).C {
 			buff := batcher.Buffer()
-			fmt.Print(t)
+			fmt.Println(t)
 			fmt.Print(" ")
-			fmt.Println(len(buff))
+			fmt.Print(len(buff))
+			fmt.Println("")
 			batcher.Save()
 		}
 	}

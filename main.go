@@ -1,12 +1,16 @@
 package main
 
 import (
+	"database/sql"
+	"encoding/json"
 	"fmt"
 	"github.com/go-redis/redis"
 	"github.com/jmoiron/sqlx"
 	"github.com/julienschmidt/httprouter"
 	_ "github.com/kshvakov/clickhouse"
+	"gorch/models"
 	"gorch/packages/batcher"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"strconv"
@@ -17,34 +21,19 @@ const (
 	batchSize = 10000
 )
 
-type Event struct {
-	Date     string `json:"date"`
-	Time string `json:"time"`
-	Unixtime uint64 `json:"unixtime"`
-	UserId   uint32 `json:"user_id"`
-	Path     string `json:"path"`
-	Value    string `json:"value"`
-}
-
-type EventDB struct {
-	Date     string `db:"date"`
-	Time string `db:"time"`
-	Unixtime uint64 `db:"unixtime"`
-	UserId   uint32 `db:"user_id"`
-	Path     string `db:"path"`
-	Value    string `db:"value"`
-}
-
 var (
 	redisClient *redis.Client
 	db *sqlx.DB
+	connect *sql.DB
+
 	fastBatcher batcher.Batcher
+	chBatcher *batcher.ClickhouseBatcher
 	slowBatcher batcher.Batcher
 )
 
 func InitRedis() {
 	redisClient = redis.NewClient(&redis.Options{
-		Addr:     "localhost:6379", //6379
+		Addr:     "localhost:16379", //6379
 		Password: "",               // no password set
 		DB:       0,                // use default DB
 	})
@@ -63,12 +52,27 @@ func InitStorage() {
 	if err := db.Ping(); err != nil {
 		log.Fatal(err)
 	}
+
+	connect, err = sql.Open("clickhouse", "tcp://127.0.0.1:9000")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	if err := db.Ping(); err != nil {
+		log.Fatal(err)
+	}
+
 }
 
 func InitBatcher() {
-	buffer := make([]string, 100)
+	buffer := make([]string, 0)
 	fastBatcher = &batcher.RedisBatcher{redisClient, "list:fast", batchSize, buffer}
-	//fastBatcher.Init(100)
+	fastBatcher.Init(1000)
+}
+
+func InitBatcherCH() {
+	chBatcher = &batcher.ClickhouseBatcher{connect, fastBatcher, 100}
+	chBatcher.Init(1000)
 }
 
 func Index(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
@@ -80,23 +84,29 @@ func Check(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 }
 
 func AddFast(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	val := time.Now().Nanosecond() / 1000000
-	fastBatcher.Push(strconv.Itoa(val))
-
-	event := EventDB{
-		Date: "2017-06-15",
-		Time: "2017-06-15 23:00:00",
-		Unixtime: 1,
-		UserId: 1,
-		Path: "rrr",
-		Value: "eef",
-	}
-
-	tx := db.MustBegin()
-	tx.NamedExec("INSERT INTO events VALUES (:date, :time, :unixtime, :user_id, :path, :value)", &event)
-	if err := tx.Commit(); err != nil {
+	body, err := ioutil.ReadAll(r.Body)
+	if err != nil {
 		log.Fatal(err)
 	}
+
+	var event models.Event
+	if err := json.Unmarshal(body, &event); err != nil {
+		log.Fatal(err)
+	}
+
+	event.Timestamp()
+
+	serializeEvent, err := json.Marshal(event)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fastBatcher.Push(string(serializeEvent))
+
+	//tx := db.MustBegin()
+	//tx.NamedExec("INSERT INTO events VALUES (:date, :datetime, :unixtime, :user_id, :path, :value)", &event)
+	//if err := tx.Commit(); err != nil {
+	//	log.Fatal(err)
+	//}
 }
 
 func PopFast(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
@@ -120,10 +130,11 @@ func main() {
 	InitRedis()
 	InitBatcher()
 	InitStorage()
+	InitBatcherCH()
 
 	router := httprouter.New()
 	router.GET("/", Index)
-	router.GET("/fast/add", AddFast)
+	router.POST("/add", AddFast)
 	router.GET("/fast/pop", PopFast)
 	router.GET("/fast/read", ReadFast)
 

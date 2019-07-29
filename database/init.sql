@@ -1,7 +1,7 @@
 CREATE TABLE IF NOT EXISTS events
 (
     date Date,
-    time DateTime,
+    datetime DateTime,
     unixtime UInt64,
     user_id UInt32,
     path String,
