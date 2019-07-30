@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"github.com/go-redis/redis"
 	"os"
+	"sync"
 	"testing"
+	"time"
 )
 
 var (
@@ -25,7 +27,9 @@ func InitRedis() {
 
 func InitBatcher() {
 	buffer := make([]string, 0)
-	redisBatcher = &RedisBatcher{redisClient, "list:fast", 2, buffer}
+	var mutex = &sync.Mutex{}
+
+	redisBatcher = &RedisBatcher{redisClient, "list:fast", 2, buffer, mutex}
 }
 
 func tearDown() {
@@ -168,3 +172,42 @@ func TestBufferOverSize(t *testing.T) {
 		t.Errorf("len(list) not equal 5, actual: %d", len(list))
 	}
 }
+
+func TestBufferRaceCondition(t *testing.T) {
+	tearDown()
+
+	for i := 0; i < 1000; i++ {
+		go func() {
+			for j := 0; j < 10; j++ {
+				redisBatcher.Push("test0")
+			}
+		}()
+	}
+	time.Sleep(1000 * time.Millisecond)
+	redisBatcher.Save()
+
+	list := redisBatcher.Read()
+	if len(list) != 10000 {
+		t.Errorf("len(list) not equal 10000, actual: %d", len(list))
+	}
+}
+
+func TestBatchRaceCondition(t *testing.T) {
+	tearDown()
+
+	redisBatcher.Init(1)
+	for i := 0; i < 1000; i++ {
+		go func() {
+			for j := 0; j < 10; j++ {
+				redisBatcher.Push("test0")
+			}
+		}()
+	}
+	time.Sleep(10 * time.Millisecond)
+
+	list := redisBatcher.Read()
+	if len(list) != 10000 {
+		t.Errorf("len(list) not equal 10000, actual: %d", len(list))
+	}
+}
+

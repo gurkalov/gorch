@@ -14,12 +14,16 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 )
 
 const (
 	batchSize = 10000
 )
+
+
+var mutex = &sync.Mutex{}
 
 var (
 	redisClient *redis.Client
@@ -66,7 +70,9 @@ func InitStorage() {
 
 func InitBatcher() {
 	buffer := make([]string, 0)
-	fastBatcher = &batcher.RedisBatcher{redisClient, "list:fast", batchSize, buffer}
+
+	var mutex = &sync.Mutex{}
+	fastBatcher = &batcher.RedisBatcher{redisClient, "list:fast", batchSize, buffer, mutex}
 	fastBatcher.Init(1000)
 }
 
@@ -100,7 +106,9 @@ func AddFast(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	if err != nil {
 		log.Fatal(err)
 	}
+	mutex.Lock()
 	fastBatcher.Push(string(serializeEvent))
+	mutex.Unlock()
 
 	//tx := db.MustBegin()
 	//tx.NamedExec("INSERT INTO events VALUES (:date, :datetime, :unixtime, :user_id, :path, :value)", &event)

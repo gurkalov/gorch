@@ -5,12 +5,12 @@ tank:
 
 phantom:
   address: localhost:7080
-  uris:
-    - /fast/add
+  ammofile: ammo.txt
+  ammo_type: uripost
   load_profile:
     load_type: rps
-    schedule: const(1000, 10s)
-  instances: 2
+    schedule: const(2000, 5s)
+  instances: 1000
 console:
   enabled: true
 telegraf:

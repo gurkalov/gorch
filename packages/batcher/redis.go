@@ -3,6 +3,7 @@ package batcher
 import (
 	"fmt"
 	"github.com/go-redis/redis"
+	"sync"
 	"time"
 )
 
@@ -11,6 +12,7 @@ type RedisBatcher struct {
 	Key string
 	Size uint64
 	Buff []string
+	Mutex *sync.Mutex
 }
 
 func (batcher *RedisBatcher) Init(period int64) error {
@@ -20,7 +22,7 @@ func (batcher *RedisBatcher) Init(period int64) error {
 			fmt.Println(t)
 			fmt.Print(" ")
 			fmt.Print(len(buff))
-			fmt.Println("")
+
 			batcher.Save()
 		}
 	}
@@ -31,17 +33,23 @@ func (batcher *RedisBatcher) Init(period int64) error {
 }
 
 func (batcher *RedisBatcher) Push(item string) error {
+	batcher.Mutex.Lock()
 	batcher.Buff = append(batcher.Buff, item)
+	batcher.Mutex.Unlock()
 
 	return nil
 }
 
 func (batcher *RedisBatcher) Save() error {
-	if err := batcher.Storage.RPush(batcher.Key, batcher.Buffer()).Err(); err != nil {
+	batcher.Mutex.Lock()
+	buffer := batcher.Buffer()
+	batcher.Buff = []string{}
+	batcher.Mutex.Unlock()
+
+	if err := batcher.Storage.RPush(batcher.Key, buffer).Err(); err != nil {
 		return err
 	}
 
-	batcher.Buff = []string{}
 	return nil
 }
 
