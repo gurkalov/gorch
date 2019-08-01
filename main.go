@@ -73,7 +73,45 @@ func InitBatcher() {
 
 	var mutex = &sync.Mutex{}
 	fastBatcher = &batcher.RedisBatcher{redisClient, "list:fast", batchSize, buffer, mutex}
-	fastBatcher.Init(1000)
+	fastBatcher.Init(100)
+
+
+	fastBatcher.Batch(1000, func(buff []string) {
+
+		fmt.Println("Write CH ")
+		fmt.Print(len(buff))
+
+		var (
+			tx, _   = connect.Begin()
+			stmt, _ = tx.Prepare("INSERT INTO events VALUES (?, ?, ?, ?, ?, ?)")
+		)
+		defer stmt.Close()
+
+		var event models.Event
+
+		for i := range buff {
+			if err := json.Unmarshal([]byte(buff[i]), &event); err != nil {
+				log.Fatal(err)
+			}
+
+			if _, err := stmt.Exec(
+				event.Date,
+				event.Datetime,
+				event.Unixtime,
+				event.UserId,
+				event.Path,
+				event.Value,
+			); err != nil {
+				log.Fatal(err)
+			}
+		}
+
+		if err := tx.Commit(); err != nil {
+			log.Fatal(err)
+		}
+
+
+	})
 }
 
 func InitBatcherCH() {
@@ -138,7 +176,7 @@ func main() {
 	InitRedis()
 	InitBatcher()
 	InitStorage()
-	InitBatcherCH()
+	//InitBatcherCH()
 
 	router := httprouter.New()
 	router.GET("/", Index)

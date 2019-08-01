@@ -1,3 +1,4 @@
 phantom:
   load_profile:
   - instances: [unknown field]
+    loop: [unknown field]

@@ -195,19 +195,31 @@ func TestBufferRaceCondition(t *testing.T) {
 func TestBatchRaceCondition(t *testing.T) {
 	tearDown()
 
-	redisBatcher.Init(1)
-	for i := 0; i < 1000; i++ {
+	redisBatcher.SetSize(100000);
+	redisBatcher.Init(100)
+
+	redisClient.Set("check", 0, 0)
+	redisBatcher.Batch(10, func(b []string) {
+		c, _ := redisClient.Get("check").Int()
+		redisClient.Set("check", c + len(b), 0)
+	})
+	for i := 0; i < 10000; i++ {
 		go func() {
 			for j := 0; j < 10; j++ {
 				redisBatcher.Push("test0")
 			}
 		}()
 	}
-	time.Sleep(10 * time.Millisecond)
+	time.Sleep(1000 * time.Millisecond)
 
 	list := redisBatcher.Read()
-	if len(list) != 10000 {
-		t.Errorf("len(list) not equal 10000, actual: %d", len(list))
+
+	c, _ := redisClient.Get("check").Int()
+	if c != 100000 {
+		t.Errorf("c not equal 100000, actual: %d", c)
+	}
+
+	if len(list) != 0 {
+		t.Errorf("len(list) not equal 0, actual: %d", len(list))
 	}
 }
-

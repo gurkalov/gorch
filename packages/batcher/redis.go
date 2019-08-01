@@ -1,7 +1,6 @@
 package batcher
 
 import (
-	"fmt"
 	"github.com/go-redis/redis"
 	"sync"
 	"time"
@@ -16,18 +15,30 @@ type RedisBatcher struct {
 }
 
 func (batcher *RedisBatcher) Init(period int64) error {
-	f := func() {
-		for t := range time.NewTicker(time.Duration(period) * time.Millisecond).C {
-			buff := batcher.Buffer()
-			fmt.Println(t)
-			fmt.Print(" ")
-			fmt.Print(len(buff))
+	go func() {
+		for _ = range time.NewTicker(time.Duration(period) * time.Millisecond).C {
+			//buff := batcher.Buffer()
+			//fmt.Println(t)
+			//fmt.Print(" ")
+			//fmt.Print(len(buff))
 
 			batcher.Save()
 		}
-	}
+	}()
 
-	go f()
+	return nil
+}
+
+func (batcher *RedisBatcher) Batch(period int64, f func(list []string)) error {
+	go func() {
+		for _ = range time.NewTicker(time.Duration(period) * time.Millisecond).C {
+			//batcher.Mutex.Lock()
+			list := batcher.Pop()
+			f(list)
+			//batcher.Mutex.Unlock()
+
+		}
+	}()
 
 	return nil
 }
@@ -53,6 +64,11 @@ func (batcher *RedisBatcher) Save() error {
 	return nil
 }
 
+func (batcher *RedisBatcher) SetSize(s uint64) error {
+	batcher.Size = s
+	return nil
+}
+
 func (batcher *RedisBatcher) Buffer() []string {
 	return batcher.Buff
 }
@@ -71,8 +87,10 @@ func (batcher *RedisBatcher) Pop() []string {
 		getBatchSize = batcher.Size
 	}
 
+	batcher.Mutex.Lock()
 	sliceStringList := batcher.Storage.LRange(batcher.Key, 0, int64(getBatchSize - 1)).Val()
 	batcher.Storage.LTrim(batcher.Key, int64(getBatchSize), -1)
+	batcher.Mutex.Unlock()
 
 	return sliceStringList
 }
