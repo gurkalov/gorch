@@ -75,12 +75,7 @@ func InitBatcher() {
 	fastBatcher = &batcher.RedisBatcher{redisClient, "list:fast", batchSize, buffer, mutex}
 	fastBatcher.Init(100)
 
-
 	fastBatcher.Batch(1000, func(buff []string) {
-
-		fmt.Println("Write CH ")
-		fmt.Print(len(buff))
-
 		var (
 			tx, _   = connect.Begin()
 			stmt, _ = tx.Prepare("INSERT INTO events VALUES (?, ?, ?, ?, ?, ?)")
@@ -109,8 +104,6 @@ func InitBatcher() {
 		if err := tx.Commit(); err != nil {
 			log.Fatal(err)
 		}
-
-
 	})
 }
 
@@ -147,12 +140,6 @@ func AddFast(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	mutex.Lock()
 	fastBatcher.Push(string(serializeEvent))
 	mutex.Unlock()
-
-	//tx := db.MustBegin()
-	//tx.NamedExec("INSERT INTO events VALUES (:date, :datetime, :unixtime, :user_id, :path, :value)", &event)
-	//if err := tx.Commit(); err != nil {
-	//	log.Fatal(err)
-	//}
 }
 
 func PopFast(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {

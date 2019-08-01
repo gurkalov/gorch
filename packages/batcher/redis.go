@@ -17,11 +17,6 @@ type RedisBatcher struct {
 func (batcher *RedisBatcher) Init(period int64) error {
 	go func() {
 		for _ = range time.NewTicker(time.Duration(period) * time.Millisecond).C {
-			//buff := batcher.Buffer()
-			//fmt.Println(t)
-			//fmt.Print(" ")
-			//fmt.Print(len(buff))
-
 			batcher.Save()
 		}
 	}()
@@ -32,11 +27,8 @@ func (batcher *RedisBatcher) Init(period int64) error {
 func (batcher *RedisBatcher) Batch(period int64, f func(list []string)) error {
 	go func() {
 		for _ = range time.NewTicker(time.Duration(period) * time.Millisecond).C {
-			//batcher.Mutex.Lock()
 			list := batcher.Pop()
 			f(list)
-			//batcher.Mutex.Unlock()
-
 		}
 	}()
 
@@ -87,12 +79,16 @@ func (batcher *RedisBatcher) Pop() []string {
 		getBatchSize = batcher.Size
 	}
 
-	batcher.Mutex.Lock()
-	sliceStringList := batcher.Storage.LRange(batcher.Key, 0, int64(getBatchSize - 1)).Val()
-	batcher.Storage.LTrim(batcher.Key, int64(getBatchSize), -1)
-	batcher.Mutex.Unlock()
+	pipe := batcher.Storage.TxPipeline()
 
-	return sliceStringList
+	sliceStringList := pipe.LRange(batcher.Key, 0, int64(getBatchSize - 1))
+	pipe.LTrim(batcher.Key, int64(getBatchSize), -1)
+	_, err := pipe.Exec()
+	if err != nil {
+		return []string{}
+	}
+
+	return sliceStringList.Val()
 }
 
 func (batcher *RedisBatcher) Flush() error {

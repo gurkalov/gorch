@@ -10,7 +10,7 @@ cpu:
 test-load:
 	clickhouse-client --query="truncate table events;"
 	redis-cli -p 16379 del list:fast
-	ab -p data.json -T application/json -c 1000 -n 100000 http://localhost:7080/add
+	ab -p data.json -T application/json -c 1000 -n 1000000 http://localhost:7080/add
 	sleep 2;
 	clickhouse-client --query="select count(*) from events;"
 	redis-cli -p 16379 llen list:fast
