@@ -1,5 +1,6 @@
 loadtest/logs/*
 loadtest/.token
+loadtest/ammo.txt
 .idea/*
 profile/*
 gorch.test

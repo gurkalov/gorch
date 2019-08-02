@@ -4,9 +4,17 @@ CREATE TABLE IF NOT EXISTS events
     datetime DateTime,
     unixtime UInt64,
     user_id UInt32,
-    path String,
-    value String
+    body_id UInt32,
+    service String,
+    section String,
+    action String,
+    model String,
+    model_id UInt32,
+    param String,
+    value String,
+    message String
 )
 ENGINE = MergeTree
 PARTITION BY date
-ORDER BY (unixtime, user_id);
+PRIMARY KEY user_id
+ORDER BY (user_id, unixtime);

@@ -8,10 +8,10 @@ import (
 
 type RedisBatcher struct {
 	Storage *redis.Client
-	Key string
-	Size uint64
-	Buff []string
-	Mutex *sync.Mutex
+	Key     string
+	Size    uint64
+	Buff    []string
+	Mutex   *sync.Mutex
 }
 
 func (batcher *RedisBatcher) Init(period int64) error {
@@ -81,7 +81,7 @@ func (batcher *RedisBatcher) Pop() []string {
 
 	pipe := batcher.Storage.TxPipeline()
 
-	sliceStringList := pipe.LRange(batcher.Key, 0, int64(getBatchSize - 1))
+	sliceStringList := pipe.LRange(batcher.Key, 0, int64(getBatchSize-1))
 	pipe.LTrim(batcher.Key, int64(getBatchSize), -1)
 	_, err := pipe.Exec()
 	if err != nil {
@@ -95,4 +95,3 @@ func (batcher *RedisBatcher) Flush() error {
 	batcher.Buff = []string{}
 	return batcher.Storage.Del(batcher.Key).Err()
 }
-

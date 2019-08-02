@@ -10,7 +10,7 @@ import (
 )
 
 var (
-	redisClient *redis.Client
+	redisClient  *redis.Client
 	redisBatcher Batcher
 )
 
@@ -195,7 +195,7 @@ func TestBufferRaceCondition(t *testing.T) {
 func TestBufferBatchRaceCondition(t *testing.T) {
 	tearDown()
 
-	redisBatcher.SetSize(100000);
+	redisBatcher.SetSize(100000)
 	redisBatcher.Init(1)
 	for i := 0; i < 10000; i++ {
 		go func() {
@@ -216,13 +216,13 @@ func TestBufferBatchRaceCondition(t *testing.T) {
 func TestBatchRaceCondition(t *testing.T) {
 	tearDown()
 
-	redisBatcher.SetSize(100000);
+	redisBatcher.SetSize(100000)
 	redisBatcher.Init(100)
 
 	redisClient.Set("check", 0, 0)
 	redisBatcher.Batch(10, func(b []string) {
 		c, _ := redisClient.Get("check").Int()
-		redisClient.Set("check", c + len(b), 0)
+		redisClient.Set("check", c+len(b), 0)
 	})
 	for i := 0; i < 10000; i++ {
 		go func() {
@@ -249,7 +249,7 @@ func TestLoadBatchRaceCondition(t *testing.T) {
 	tearDown()
 
 	var sum = 0
-	redisBatcher.SetSize(100000);
+	redisBatcher.SetSize(100000)
 	redisBatcher.Init(10)
 
 	redisClient.Set("check", 0, 0)

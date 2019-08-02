@@ -22,24 +22,22 @@ const (
 	batchSize = 10000
 )
 
-
 var mutex = &sync.Mutex{}
 
 var (
 	redisClient *redis.Client
-	db *sqlx.DB
-	connect *sql.DB
+	db          *sqlx.DB
+	connect     *sql.DB
 
 	fastBatcher batcher.Batcher
-	chBatcher *batcher.ClickhouseBatcher
 	slowBatcher batcher.Batcher
 )
 
 func InitRedis() {
 	redisClient = redis.NewClient(&redis.Options{
 		Addr:     "localhost:16379", //6379
-		Password: "",               // no password set
-		DB:       0,                // use default DB
+		Password: "",                // no password set
+		DB:       0,                 // use default DB
 	})
 
 	pong, err := redisClient.Ping().Result()
@@ -78,7 +76,7 @@ func InitBatcher() {
 	fastBatcher.Batch(1000, func(buff []string) {
 		var (
 			tx, _   = connect.Begin()
-			stmt, _ = tx.Prepare("INSERT INTO events VALUES (?, ?, ?, ?, ?, ?)")
+			stmt, _ = tx.Prepare("INSERT INTO events VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
 		)
 		defer stmt.Close()
 
@@ -94,8 +92,15 @@ func InitBatcher() {
 				event.Datetime,
 				event.Unixtime,
 				event.UserId,
-				event.Path,
+				event.BodyId,
+				event.Service,
+				event.Section,
+				event.Action,
+				event.Model,
+				event.ModelId,
+				event.Param,
 				event.Value,
+				event.Message,
 			); err != nil {
 				log.Fatal(err)
 			}
@@ -105,11 +110,6 @@ func InitBatcher() {
 			log.Fatal(err)
 		}
 	})
-}
-
-func InitBatcherCH() {
-	chBatcher = &batcher.ClickhouseBatcher{connect, fastBatcher, 100}
-	chBatcher.Init(1000)
 }
 
 func Index(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {

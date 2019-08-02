@@ -10,8 +10,15 @@ type Event struct {
 	Datetime string `json:"datetime" db:"datetime"`
 	Unixtime uint64 `json:"unixtime" db:"unixtime"`
 	UserId   uint32 `json:"user_id" db:"user_id"`
-	Path     string `json:"path" db:"path"`
+	BodyId   uint32 `json:"body_id" db:"body_id"`
+	Service  string `json:"service" db:"service"`
+	Section  string `json:"section" db:"section"`
+	Action   string `json:"action" db:"action"`
+	Model    string `json:"model" db:"model"`
+	ModelId  uint32 `json:"model_id" db:"model_id"`
+	Param    string `json:"param" db:"param"`
 	Value    string `json:"value" db:"value"`
+	Message  string `json:"message" db:"message"`
 }
 
 func (event Event) toString() string {
