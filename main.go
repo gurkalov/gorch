@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/go-redis/redis"
-	"github.com/jmoiron/sqlx"
 	"github.com/julienschmidt/httprouter"
 	_ "github.com/kshvakov/clickhouse"
 	"gorch/models"
@@ -13,9 +12,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
-	"strconv"
 	"sync"
-	"time"
 )
 
 const (
@@ -26,11 +23,9 @@ var mutex = &sync.Mutex{}
 
 var (
 	redisClient *redis.Client
-	db          *sqlx.DB
 	connect     *sql.DB
 
 	fastBatcher batcher.Batcher
-	slowBatcher batcher.Batcher
 )
 
 func InitRedis() {
@@ -46,24 +41,14 @@ func InitRedis() {
 
 func InitStorage() {
 	var err error
-	db, err = sqlx.Open("clickhouse", "tcp://127.0.0.1:9000?debug=true")
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	if err := db.Ping(); err != nil {
-		log.Fatal(err)
-	}
-
 	connect, err = sql.Open("clickhouse", "tcp://127.0.0.1:9000")
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	if err := db.Ping(); err != nil {
+	if err := connect.Ping(); err != nil {
 		log.Fatal(err)
 	}
-
 }
 
 func InitBatcher() {
@@ -112,15 +97,11 @@ func InitBatcher() {
 	})
 }
 
-func Index(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-	fmt.Fprint(w, "Welcome!\n")
-}
-
 func Check(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	fmt.Fprint(w, "Check")
 }
 
-func AddFast(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
+func Add(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		log.Fatal(err)
@@ -142,38 +123,13 @@ func AddFast(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
 	mutex.Unlock()
 }
 
-func PopFast(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	fmt.Fprint(w, fastBatcher.Pop())
-}
-
-func ReadFast(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	fmt.Fprint(w, fastBatcher.Read())
-}
-
-func AddSlow(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	val := time.Now().Nanosecond() / 1000000
-	slowBatcher.Push(strconv.Itoa(val))
-}
-
-func BatchSlow(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	fmt.Fprint(w, slowBatcher.Pop())
-}
-
 func main() {
 	InitRedis()
 	InitBatcher()
 	InitStorage()
-	//InitBatcherCH()
 
 	router := httprouter.New()
-	router.GET("/", Index)
-	router.POST("/add", AddFast)
-	router.GET("/fast/pop", PopFast)
-	router.GET("/fast/read", ReadFast)
-
-	router.GET("/slow/add", AddSlow)
-	router.GET("/slow/batch", BatchSlow)
-
+	router.POST("/add", Add)
 	router.GET("/check", Check)
 
 	log.Fatal(http.ListenAndServe(":7080", router))

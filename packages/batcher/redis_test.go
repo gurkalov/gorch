@@ -244,35 +244,3 @@ func TestBatchRaceCondition(t *testing.T) {
 		t.Errorf("len(list) not equal 0, actual: %d", len(list))
 	}
 }
-
-func TestLoadBatchRaceCondition(t *testing.T) {
-	tearDown()
-
-	var sum = 0
-	redisBatcher.SetSize(100000)
-	redisBatcher.Init(10)
-
-	redisClient.Set("check", 0, 0)
-	redisBatcher.Batch(10, func(b []string) {
-		sum = sum + len(b)
-	})
-	for i := 0; i < 10000; i++ {
-		go func() {
-			for j := 0; j < 10; j++ {
-				redisBatcher.Push("test0")
-			}
-		}()
-	}
-	time.Sleep(1000 * time.Millisecond)
-
-	list := redisBatcher.Read()
-
-	c := sum
-	if c != 100000 {
-		t.Errorf("c not equal 100000, actual: %d", c)
-	}
-
-	if len(list) != 0 {
-		t.Errorf("len(list) not equal 0, actual: %d", len(list))
-	}
-}
