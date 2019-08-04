@@ -1,7 +1,6 @@
 package batcher
 
 import (
-	"fmt"
 	"github.com/go-redis/redis"
 	"sync"
 	"time"
@@ -13,31 +12,37 @@ type RedisBatcher struct {
 	Size         uint64
 	Buff         []string
 	Mutex        *sync.Mutex
-	//BufferTicker *time.Ticker
-	//BatchTicker  *time.Ticker
 }
 
-func (batcher *RedisBatcher) Init(period int64) *time.Ticker {
-	tiker := time.NewTicker(time.Duration(period) * time.Millisecond)
+func (batcher *RedisBatcher) Init(storage *redis.Client, key string) {
+	batcher.Storage = storage
+	batcher.Key = key
+	batcher.Size = 0
+
+	batcher.Buff = make([]string, 0)
+	batcher.Mutex = &sync.Mutex{}
+}
+
+func (batcher *RedisBatcher) Run(d time.Duration) *time.Ticker {
+	ticker := time.NewTicker(d)
 	go func() {
-		for _ = range tiker.C {
+		for _ = range ticker.C {
 			batcher.Save()
 		}
 	}()
 
-	return tiker
+	return ticker
 }
 
-func (batcher *RedisBatcher) Batch(period int64, f func(list []string)) *time.Ticker {
-	tiker := time.NewTicker(time.Duration(period) * time.Millisecond)
+func (batcher *RedisBatcher) Batch(d time.Duration, f func(list []string)) *time.Ticker {
+	ticker := time.NewTicker(d)
 	go func() {
-		for _ = range tiker.C {
-			list := batcher.Pop()
-			f(list)
+		for _ = range ticker.C {
+			f(batcher.Pop())
 		}
 	}()
 
-	return tiker
+	return ticker
 }
 
 func (batcher *RedisBatcher) Push(item string) error {
@@ -79,7 +84,6 @@ func (batcher *RedisBatcher) Read() []string {
 
 func (batcher *RedisBatcher) Pop() []string {
 	var sliceStringList *redis.StringSliceCmd
-	key := batcher.Key
 
 	for i := 0; i < 5; i++ {
 		err := batcher.Storage.Watch(func(tx *redis.Tx) error {
@@ -96,15 +100,8 @@ func (batcher *RedisBatcher) Pop() []string {
 			})
 
 			return err
-		}, key)
+		}, batcher.Key)
 
-		if err != nil {
-			fmt.Print(time.Now())
-			fmt.Print(" N: ")
-			fmt.Print(i)
-			fmt.Print(" ")
-			fmt.Println(err)
-		}
 		if err != redis.TxFailedErr {
 			break
 		}
@@ -115,5 +112,8 @@ func (batcher *RedisBatcher) Pop() []string {
 
 func (batcher *RedisBatcher) Flush() error {
 	batcher.Buff = []string{}
+	if batcher.Storage == nil {
+		return nil
+	}
 	return batcher.Storage.Del(batcher.Key).Err()
 }

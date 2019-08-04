@@ -13,6 +13,7 @@ import (
 	"log"
 	"net/http"
 	"sync"
+	"time"
 )
 
 const (
@@ -52,13 +53,11 @@ func InitStorage() {
 }
 
 func InitBatcher() {
-	buffer := make([]string, 0)
+	fastBatcher = new(batcher.RedisBatcher)
+	fastBatcher.Init(redisClient, "list:fast")
+	fastBatcher.Run(10 * time.Millisecond)
 
-	var mutex = &sync.Mutex{}
-	fastBatcher = &batcher.RedisBatcher{redisClient, "list:fast", batchSize, buffer, mutex}
-	fastBatcher.Init(100)
-
-	fastBatcher.Batch(1000, func(buff []string) {
+	fastBatcher.Batch(1000 * time.Millisecond, func(buff []string) {
 		var (
 			tx, _   = connect.Begin()
 			stmt, _ = tx.Prepare("INSERT INTO events VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")

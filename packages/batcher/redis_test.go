@@ -9,6 +9,8 @@ import (
 	"time"
 )
 
+const batcherRedisKey = "list:fast"
+
 var (
 	redisClient  *redis.Client
 	redisBatcher Batcher
@@ -26,10 +28,8 @@ func InitRedis() {
 }
 
 func InitBatcher() {
-	buffer := make([]string, 0)
-	var mutex = &sync.Mutex{}
-
-	redisBatcher = &RedisBatcher{redisClient, "list:fast", 2, buffer, mutex}
+	redisBatcher = new(RedisBatcher)
+	redisBatcher.Init(redisClient, batcherRedisKey)
 }
 
 func tearDown() {
@@ -136,6 +136,7 @@ func TestReadAllOverSize(t *testing.T) {
 func TestPopOverSize(t *testing.T) {
 	tearDown()
 
+	redisBatcher.SetSize(2)
 	redisBatcher.Push("test0")
 	redisBatcher.Push("test1")
 	redisBatcher.Push("test2")
@@ -196,7 +197,7 @@ func TestBufferBatchRaceCondition(t *testing.T) {
 	tearDown()
 
 	redisBatcher.SetSize(100000)
-	bufferTiker := redisBatcher.Init(1)
+	bufferTicker := redisBatcher.Run(1)
 
 	var wg sync.WaitGroup
 	for i := 0; i < 10000; i++ {
@@ -211,7 +212,7 @@ func TestBufferBatchRaceCondition(t *testing.T) {
 	wg.Wait()
 
 	time.Sleep(500 * time.Millisecond)
-	bufferTiker.Stop()
+	bufferTicker.Stop()
 
 	list := redisBatcher.Read()
 
@@ -224,10 +225,10 @@ func TestBatchRaceCondition(t *testing.T) {
 	tearDown()
 
 	redisBatcher.SetSize(100000)
-	bufferTiker := redisBatcher.Init(100)
+	bufferTicker := redisBatcher.Run(100 * time.Millisecond)
 
 	redisClient.Set("check", 0, 0)
-	batchTiker := redisBatcher.Batch(10, func(b []string) {
+	batchTicker := redisBatcher.Batch(10 * time.Millisecond, func(b []string) {
 		c, _ := redisClient.Get("check").Int()
 		redisClient.Set("check", c+len(b), 0)
 	})
@@ -245,8 +246,8 @@ func TestBatchRaceCondition(t *testing.T) {
 	wg.Wait()
 
 	time.Sleep(500 * time.Millisecond)
-	bufferTiker.Stop()
-	batchTiker.Stop()
+	bufferTicker.Stop()
+	batchTicker.Stop()
 
 	list := redisBatcher.Read()
 
@@ -264,10 +265,10 @@ func TestLoadBatchRaceConditionInt(t *testing.T) {
 	tearDown()
 
 	redisBatcher.SetSize(1000000)
-	bufferTiker := redisBatcher.Init(1)
+	bufferTicker := redisBatcher.Run(1 * time.Millisecond)
 
 	sum := 0
-	batchTiker := redisBatcher.Batch(100, func(b []string) {
+	batchTicker := redisBatcher.Batch(100 * time.Millisecond, func(b []string) {
 		sum += len(b)
 	})
 
@@ -283,8 +284,8 @@ func TestLoadBatchRaceConditionInt(t *testing.T) {
 	}
 	wg.Wait()
 	time.Sleep(500 * time.Millisecond)
-	bufferTiker.Stop()
-	batchTiker.Stop()
+	bufferTicker.Stop()
+	batchTicker.Stop()
 
 	list := redisBatcher.Read()
 	if sum != 1000000 {
@@ -299,11 +300,11 @@ func TestLoadBatchRaceConditionInt(t *testing.T) {
 func TestLoadBatchRaceConditionRedisKey(t *testing.T) {
 	tearDown()
 
-	redisBatcher.SetSize(1000000)
-	bufferTiker := redisBatcher.Init(1)
+	redisBatcher.SetSize(10000)
+	bufferTicker := redisBatcher.Run(1 * time.Millisecond)
 
 	redisClient.Set("check", 0, 0)
-	batchTiker := redisBatcher.Batch(1, func(b []string) {
+	batchTicker := redisBatcher.Batch(1 * time.Millisecond, func(b []string) {
 		c, _ := redisClient.Get("check").Int()
 		redisClient.Set("check", c + len(b), 0)
 	})
@@ -320,8 +321,8 @@ func TestLoadBatchRaceConditionRedisKey(t *testing.T) {
 	}
 	wg.Wait()
 	time.Sleep(500 * time.Millisecond)
-	bufferTiker.Stop()
-	batchTiker.Stop()
+	bufferTicker.Stop()
+	batchTicker.Stop()
 
 	list := redisBatcher.Read()
 
