@@ -1,38 +1,43 @@
 package batcher
 
 import (
+	"fmt"
 	"github.com/go-redis/redis"
 	"sync"
 	"time"
 )
 
 type RedisBatcher struct {
-	Storage *redis.Client
-	Key     string
-	Size    uint64
-	Buff    []string
-	Mutex   *sync.Mutex
+	Storage      *redis.Client
+	Key          string
+	Size         uint64
+	Buff         []string
+	Mutex        *sync.Mutex
+	//BufferTicker *time.Ticker
+	//BatchTicker  *time.Ticker
 }
 
-func (batcher *RedisBatcher) Init(period int64) error {
+func (batcher *RedisBatcher) Init(period int64) *time.Ticker {
+	tiker := time.NewTicker(time.Duration(period) * time.Millisecond)
 	go func() {
-		for _ = range time.NewTicker(time.Duration(period) * time.Millisecond).C {
+		for _ = range tiker.C {
 			batcher.Save()
 		}
 	}()
 
-	return nil
+	return tiker
 }
 
-func (batcher *RedisBatcher) Batch(period int64, f func(list []string)) error {
+func (batcher *RedisBatcher) Batch(period int64, f func(list []string)) *time.Ticker {
+	tiker := time.NewTicker(time.Duration(period) * time.Millisecond)
 	go func() {
-		for _ = range time.NewTicker(time.Duration(period) * time.Millisecond).C {
+		for _ = range tiker.C {
 			list := batcher.Pop()
 			f(list)
 		}
 	}()
 
-	return nil
+	return tiker
 }
 
 func (batcher *RedisBatcher) Push(item string) error {
@@ -73,19 +78,36 @@ func (batcher *RedisBatcher) Read() []string {
 }
 
 func (batcher *RedisBatcher) Pop() []string {
-	length := uint64(batcher.Storage.LLen(batcher.Key).Val())
-	getBatchSize := length
-	if batcher.Size > 0 && getBatchSize > batcher.Size {
-		getBatchSize = batcher.Size
-	}
+	var sliceStringList *redis.StringSliceCmd
+	key := batcher.Key
 
-	pipe := batcher.Storage.TxPipeline()
+	for i := 0; i < 5; i++ {
+		err := batcher.Storage.Watch(func(tx *redis.Tx) error {
+			length := uint64(tx.LLen(batcher.Key).Val())
+			getBatchSize := length
+			if batcher.Size > 0 && getBatchSize > batcher.Size {
+				getBatchSize = batcher.Size
+			}
 
-	sliceStringList := pipe.LRange(batcher.Key, 0, int64(getBatchSize-1))
-	pipe.LTrim(batcher.Key, int64(getBatchSize), -1)
-	_, err := pipe.Exec()
-	if err != nil {
-		return []string{}
+			_, err := tx.Pipelined(func(pipe redis.Pipeliner) error {
+				sliceStringList = pipe.LRange(batcher.Key, 0, int64(getBatchSize-1))
+				pipe.LTrim(batcher.Key, int64(getBatchSize), -1)
+				return nil
+			})
+
+			return err
+		}, key)
+
+		if err != nil {
+			fmt.Print(time.Now())
+			fmt.Print(" N: ")
+			fmt.Print(i)
+			fmt.Print(" ")
+			fmt.Println(err)
+		}
+		if err != redis.TxFailedErr {
+			break
+		}
 	}
 
 	return sliceStringList.Val()

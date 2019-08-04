@@ -196,15 +196,22 @@ func TestBufferBatchRaceCondition(t *testing.T) {
 	tearDown()
 
 	redisBatcher.SetSize(100000)
-	redisBatcher.Init(1)
+	bufferTiker := redisBatcher.Init(1)
+
+	var wg sync.WaitGroup
 	for i := 0; i < 10000; i++ {
+		wg.Add(1)
 		go func() {
+			defer wg.Done()
 			for j := 0; j < 100; j++ {
 				redisBatcher.Push("test0")
 			}
 		}()
 	}
-	time.Sleep(2000 * time.Millisecond)
+	wg.Wait()
+
+	time.Sleep(500 * time.Millisecond)
+	bufferTiker.Stop()
 
 	list := redisBatcher.Read()
 
@@ -217,27 +224,110 @@ func TestBatchRaceCondition(t *testing.T) {
 	tearDown()
 
 	redisBatcher.SetSize(100000)
-	redisBatcher.Init(100)
+	bufferTiker := redisBatcher.Init(100)
 
 	redisClient.Set("check", 0, 0)
-	redisBatcher.Batch(10, func(b []string) {
+	batchTiker := redisBatcher.Batch(10, func(b []string) {
 		c, _ := redisClient.Get("check").Int()
 		redisClient.Set("check", c+len(b), 0)
 	})
+
+	var wg sync.WaitGroup
 	for i := 0; i < 10000; i++ {
+		wg.Add(1)
 		go func() {
+			defer wg.Done()
 			for j := 0; j < 10; j++ {
 				redisBatcher.Push("test0")
 			}
 		}()
 	}
-	time.Sleep(1000 * time.Millisecond)
+	wg.Wait()
+
+	time.Sleep(500 * time.Millisecond)
+	bufferTiker.Stop()
+	batchTiker.Stop()
 
 	list := redisBatcher.Read()
 
 	c, _ := redisClient.Get("check").Int()
 	if c != 100000 {
 		t.Errorf("c not equal 100000, actual: %d", c)
+	}
+
+	if len(list) != 0 {
+		t.Errorf("len(list) not equal 0, actual: %d", len(list))
+	}
+}
+
+func TestLoadBatchRaceConditionInt(t *testing.T) {
+	tearDown()
+
+	redisBatcher.SetSize(1000000)
+	bufferTiker := redisBatcher.Init(1)
+
+	sum := 0
+	batchTiker := redisBatcher.Batch(100, func(b []string) {
+		sum += len(b)
+	})
+
+	var wg sync.WaitGroup
+	for i := 0; i < 10000; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 100; j++ {
+				redisBatcher.Push("test0")
+			}
+		}()
+	}
+	wg.Wait()
+	time.Sleep(500 * time.Millisecond)
+	bufferTiker.Stop()
+	batchTiker.Stop()
+
+	list := redisBatcher.Read()
+	if sum != 1000000 {
+		t.Errorf("sum not equal 1000000, actual: %d", sum)
+	}
+
+	if len(list) != 0 {
+		t.Errorf("len(list) not equal 0, actual: %d", len(list))
+	}
+}
+
+func TestLoadBatchRaceConditionRedisKey(t *testing.T) {
+	tearDown()
+
+	redisBatcher.SetSize(1000000)
+	bufferTiker := redisBatcher.Init(1)
+
+	redisClient.Set("check", 0, 0)
+	batchTiker := redisBatcher.Batch(1, func(b []string) {
+		c, _ := redisClient.Get("check").Int()
+		redisClient.Set("check", c + len(b), 0)
+	})
+
+	var wg sync.WaitGroup
+	for i := 0; i < 10000; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 100; j++ {
+				redisBatcher.Push("test0")
+			}
+		}()
+	}
+	wg.Wait()
+	time.Sleep(500 * time.Millisecond)
+	bufferTiker.Stop()
+	batchTiker.Stop()
+
+	list := redisBatcher.Read()
+
+	c, _ := redisClient.Get("check").Int()
+	if c != 1000000 {
+		t.Errorf("c not equal 1000000, actual: %d", c)
 	}
 
 	if len(list) != 0 {
